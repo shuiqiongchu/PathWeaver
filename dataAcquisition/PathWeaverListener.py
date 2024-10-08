@@ -67,17 +67,18 @@ class PathWeaverListener(mouse.Listener):
 
 
 def process_mouse_events():
-    if len(mouse_events) == 0:
-        return
-
     global lastX, lastY
+    if len(mouse_events) == 0:
+        lastX = pointX
+        lastY = pointY
+        return
     with open("mouse_events.txt", "a") as f:
         index = 1
         for event in mouse_events:
-            f.write(f"{index}:{event[0]:.7f}:{event[1]}:{event[2]}\n")
+            f.write(f"{index}:{event[0]:.5f}:{event[1]}:{event[2]}\n")
             index += 1
-        f.write(f"P{lastX}:{lastY}:{pointX}:{pointY}:{lastStap - lastTime:.7f}:{len(mouse_events)}\n")
-        print(f"Write{lastX}:{lastY}:{pointX}:{pointY}:{lastStap - lastTime:.7f}:{len(mouse_events)}")
+        f.write(f"P{lastX}:{lastY}:{pointX}:{pointY}:{lastStap - lastTime:.5f}:{len(mouse_events)}\n")
+        print(f"Write{lastX}:{lastY}:{pointX}:{pointY}:{lastStap - lastTime:.5f}:{len(mouse_events)}")
         lastX = pointX
         lastY = pointY
         mouse_events.clear()
@@ -89,7 +90,7 @@ if __name__ == "__main__":
 
     try:
         # 阻塞主线程，直到用户按下 Enter 键
-        input("Press Enter to stop...")
+        input("Press Enter to stop...\n")
     except KeyboardInterrupt:
         pass
     finally:
