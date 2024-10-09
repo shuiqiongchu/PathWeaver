@@ -1,27 +1,28 @@
+import random
 import time
 from pynput import mouse
 
-# 存储鼠标移动事件和时间戳
+# Store mouse movement events and timestamps
 mouse_events = []
 
-# 临时变量,记录上一条
+# Temporary variable, records the data of the previous path point
 tX = None
 tY = None
 tS = None
 
-# 结束点
-pointX = None
-pointY = None
-
-# 起始点
+# start point
 lastX = 0
 lastY = 0
 
-# 每个移动轨迹起始时间戳
+# end point
+pointX = None
+pointY = None
+
+# Starting timestamp of each movement trajectory
 lastStap = 0
-# 是否是第一条记录
+# Is it the first record
 startFlag = True
-# 每个移动轨迹起始时间戳
+# Starting timestamp of each movement trajectory
 lastTime = 0
 
 
@@ -57,14 +58,7 @@ class PathWeaverListener(mouse.Listener):
 
     def on_click(self, x, y, button, pressed):
         pass
-        # 可以在这里处理鼠标点击事件
-        # if pressed:
-        #     global tS, pointX, pointY
-        #     tS = time.time()
-        #     pointX = x
-        #     pointY = y
-        #     process_mouse_events()
-
+        # You can handle mouse click events here
 
 def process_mouse_events():
     global lastX, lastY
@@ -75,7 +69,11 @@ def process_mouse_events():
     with open("mouse_events.txt", "a") as f:
         index = 1
         for event in mouse_events:
-            f.write(f"{index}:{event[0]:.5f}:{event[1]}:{event[2]}\n")
+            if event[0] == 0:  # Prevent zero delay
+                new_event = (random.uniform(0.00099, 0.00245), event[1], event[2])
+                f.write(f"{index}:{new_event[0]:.5f}:{new_event[1]}:{new_event[2]}\n")
+            else:
+                f.write(f"{index}:{event[0]:.5f}:{event[1]}:{event[2]}\n")
             index += 1
         f.write(f"P{lastX}:{lastY}:{pointX}:{pointY}:{lastStap - lastTime:.5f}:{len(mouse_events)}\n")
         print(f"Write{lastX}:{lastY}:{pointX}:{pointY}:{lastStap - lastTime:.5f}:{len(mouse_events)}")
@@ -89,10 +87,10 @@ if __name__ == "__main__":
     listener.start()
 
     try:
-        # 阻塞主线程，直到用户按下 Enter 键
+        # Block the main thread until the user presses the Enter key
         input("Press Enter to stop...\n")
     except KeyboardInterrupt:
         pass
     finally:
         listener.stop()
-        listener.join()  # 确保监听器线程完全停止
+        listener.join()  # Ensure that the listener thread is completely stopped
