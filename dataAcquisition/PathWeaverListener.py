@@ -60,6 +60,19 @@ class PathWeaverListener(mouse.Listener):
         pass
         # You can handle mouse click events here
 
+
+def calculate_distance(point1X, point1Y, point2X, point2Y):
+    # Calculate the Euclidean distance between two points
+    return ((point2X - point1X) ** 2 + (point2Y - point1Y) ** 2) ** 0.5
+
+
+def calculate_velocity(point1X, point1Y, point2X, point2Y, time_interval):
+    distance = calculate_distance(point1X, point1Y, point2X, point2Y,)
+    # computation speed
+    return distance / time_interval if time_interval > 0 else 0
+
+
+
 def process_mouse_events():
     global lastX, lastY
     if len(mouse_events) == 0:
@@ -68,15 +81,29 @@ def process_mouse_events():
         return
     with open("mouse_events.txt", "a") as f:
         index = 1
+        #Temporary variables of speed and acceleration
+        lX = mouse_events[0][1]+1
+        lY = mouse_events[0][2]
+
         for event in mouse_events:
             if event[0] == 0:  # Prevent zero delay
                 new_event = (random.uniform(0.00099, 0.00245), event[1], event[2])
-                f.write(f"{index}:{new_event[0]:.5f}:{new_event[1]}:{new_event[2]}\n")
+                velocity = calculate_velocity(event[1], event[2], lX, lY, new_event[0])
+                f.write(f"{index}:{new_event[0]:.5f}:{new_event[1]}:{new_event[2]}:{velocity:.2f}\n")
             else:
-                f.write(f"{index}:{event[0]:.5f}:{event[1]}:{event[2]}\n")
+                velocity = calculate_velocity(event[1], event[2], lX, lY, event[0])
+                #Serial number:Distance from previous Path point Delay:Path point x:Path point y:Current point speed
+                f.write(f"{index}:{event[0]:.5f}:{event[1]}:{event[2]}:{velocity:.2f}\n")
+            lX = event[1]
+            lY = event[2]
             index += 1
-        f.write(f"P{lastX}:{lastY}:{pointX}:{pointY}:{lastStap - lastTime:.5f}:{len(mouse_events)}\n")
-        print(f"Write{lastX}:{lastY}:{pointX}:{pointY}:{lastStap - lastTime:.5f}:{len(mouse_events)}")
+
+        dis = calculate_distance(lastX, lastY, pointX, pointY)
+        tT = lastStap - lastTime
+        tV = calculate_velocity(dis/tT)
+        #Starting x:Starting y: Ending x:Ending y:Total time consumed:Number of path points:Distance:Average speed
+        f.write(f"P{lastX}:{lastY}:{pointX}:{pointY}:{tT:.5f}:{len(mouse_events)}:{dis:.3f}:{tV}\n")
+        print(f"Write{lastX}:{lastY}:{pointX}:{pointY}:{tT:.5f}:{len(mouse_events)}")
         lastX = pointX
         lastY = pointY
         mouse_events.clear()
