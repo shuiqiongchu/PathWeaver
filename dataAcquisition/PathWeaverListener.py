@@ -18,7 +18,7 @@ lastY = 0
 pointX = None
 pointY = None
 
-# Starting timestamp of each movement trajectory
+# End timestamp for each motion trajectory
 lastStap = 0
 # Is it the first record
 startFlag = True
@@ -79,7 +79,7 @@ def process_mouse_events():
         lastX = pointX
         lastY = pointY
         return
-    with open("mouse_events.txt", "a") as f:
+    with open("mouse_events1.txt", "a") as f:
         index = 1
         #Temporary variables of speed and acceleration
         lX = mouse_events[0][1]+1
@@ -100,9 +100,11 @@ def process_mouse_events():
 
         dis = calculate_distance(lastX, lastY, pointX, pointY)
         tT = lastStap - lastTime
-        tV = calculate_velocity(dis/tT)
-        #Starting x:Starting y: Ending x:Ending y:Total time consumed:Number of path points:Distance:Average speed
-        f.write(f"P{lastX}:{lastY}:{pointX}:{pointY}:{tT:.5f}:{len(mouse_events)}:{dis:.3f}:{tV}\n")
+        if tT <= 0:
+            tT = random.uniform(0.01, 0.015)
+        tV = dis/tT
+        #Starting x:Starting y: Ending x:Ending y:Distance:Average speed:Total time consumed:Number of path points
+        f.write(f"P{lastX}:{lastY}:{pointX}:{pointY}:{dis:.3f}:{tV:.3f}:{tT:.3f}:{len(mouse_events)}\n")
         print(f"Write{lastX}:{lastY}:{pointX}:{pointY}:{tT:.5f}:{len(mouse_events)}")
         lastX = pointX
         lastY = pointY

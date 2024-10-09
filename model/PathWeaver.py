@@ -1,14 +1,29 @@
-import time
-from torch import nn
 import torch
+from torch import nn
+from torch.optim import Adam
 from torch.utils.data import Dataset, DataLoader
-from torch.utils.tensorboard import SummaryWriter
 import torch.optim.lr_scheduler as lr_scheduler
+from torch.utils.tensorboard import SummaryWriter
+import time
 
+# SummaryWriter 用于记录损失曲线和其他信息
 writer = SummaryWriter("logs")
 t = time.time()
 
-# 数据加载
+# 数据加载函数
+def load_data(file_name):
+    dataSet = []
+    with open(file_name, 'r') as file:
+        data = file.readlines()  # 读取所有行
+        for line in data:
+            if line.startswith('P'):  # 判断当前行的第一个字符是否是 P
+                tl = line.replace("P", "").replace("\n", "")
+                values = tl.split(":")
+                values = [float(value) for value in values]  # 转换为数值类型
+                dataSet.append(values)
+    return dataSet
+
+# 自定义数据集
 class DataSource(Dataset):
     def __init__(self, data):
         self.data = data  # 存储数据
@@ -18,130 +33,113 @@ class DataSource(Dataset):
 
     def __getitem__(self, idx):
         sample = self.data[idx]  # 获取样本
-        inputs = sample[:4]  # 前四个作为输入
-        labels = sample[4:]  # 后两个作为标签
+        inputs = sample[:6]  # 前六个作为输入
+        labels = sample[6:]  # 后面的作为标签
         return {'inputs': inputs, 'labels': labels}  # 返回字典形式
 
-# 神经网络
-class NerveW(nn.Module):
+# 神经网络模型
+class nerveW(nn.Module):
     def __init__(self):
-        super(NerveW, self).__init__()
+        super(nerveW, self).__init__()
         self.model = nn.Sequential(
-            nn.Linear(4, 64),
-            nn.LeakyReLU(),
+            nn.Linear(6, 64),  # 输入 6 个特征
+            nn.ReLU(),
             nn.Linear(64, 128),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Linear(128, 64),
-            nn.LeakyReLU(),
-            nn.Linear(64, 2)
+            nn.ReLU(),
+            nn.Linear(64, 2)  # 输出 2 个值：时间和路径点数量
         )
 
     def forward(self, input):
         return self.model(input)
 
-# 数据预处理
-def load_data(file_name):
-    dataSet = []
-    with open(file_name, 'r') as file:
-        data = file.readlines()  # 读取所有行
-        for line in data:
-            if line.startswith('P'):  # 判断当前行的第一个字符
-                tl = line.replace("P", "").replace("\n", "")
-                values = tl.split(":")
-                values = [float(value) for value in values]  # 转换为数值类型
-                dataSet.append(values)
-    return dataSet
+# 自定义损失函数
+def custom_loss(output, target, weight_time=1.0, weight_count=1.0):
+    time_loss = nn.MSELoss()(output[:, 0], target[:, 0])  # 总时间的损失
+    count_loss = nn.MSELoss()(output[:, 1], target[:, 1])  # 路径点数量的损失
+    return weight_time * time_loss + weight_count * count_loss
 
-# 加载训练和测试数据
-train_data = load_data('mouse_events.txt')
-test_data = load_data('mouse_events1.txt')
+# 数据加载
+train_data = load_data('../dataAcquisition/mouse_events.txt')
+test_data = load_data('../dataAcquisition/mouse_events1.txt')
 
 # 转换为 tensor
 train_tensor = torch.tensor(train_data, dtype=torch.float32)
 test_tensor = torch.tensor(test_data, dtype=torch.float32)
 
+# 数据标准化
+train_tensor = (train_tensor - train_tensor.mean(dim=0)) / train_tensor.std(dim=0)
+test_tensor = (test_tensor - test_tensor.mean(dim=0)) / test_tensor.std(dim=0)
+
 # 创建数据集和数据加载器
 train_dataset = DataSource(train_tensor)
 test_dataset = DataSource(test_tensor)
 
-train_dataloader = DataLoader(train_dataset, batch_size=2, shuffle=True)
-test_dataloader = DataLoader(test_dataset, batch_size=2, shuffle=False)
+print(len(train_dataset))
+print(len(test_dataset))
 
-# 标准化训练集
-train_tensor = (train_tensor - train_tensor.mean(dim=0)) / train_tensor.std(dim=0)
-train_tensor = train_tensor.cuda()
+train_dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+test_dataloader = DataLoader(test_dataset, batch_size=16, shuffle=False)
 
-# 训练
-n = NerveW()
-n = n.cuda()
+# 训练和验证循环
+def train_model(model, train_loader, test_loader, num_epochs=3, lr=0.001):
+    optimizer = Adam(model.parameters(), lr=lr)
+    scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=5, verbose=True)
+    loss_fn = custom_loss  # 自定义损失函数
+    model = model.cuda()  # 将模型放到 GPU
+    best_loss = float('inf')  # 用于保存最好的模型
+    step = 0  # 记录步数
 
-loss_fn = nn.MSELoss()
-learning_rate = 0.001  # 调整学习率为更小的值
+    for epoch in range(num_epochs):
+        model.train()
+        for batch in train_loader:
+            # 获取数据并转到 GPU
+            inputs, targets = batch['inputs'].cuda(), batch['labels'].cuda()
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = loss_fn(outputs, targets)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)  # 防止梯度爆炸
+            optimizer.step()
 
-optimizer = torch.optim.Adam(n.parameters(), lr=learning_rate)  # 使用 Adam 优化器
-scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=5, verbose=True)
+            # 每次反向传播调整完网络参数后，立即计算训练和测试集损失，并保存模型
+            train_loss = loss.item()
 
-# 对目标值进行归一化
-def normalize_labels(labels):
-    max_time = 5000
-    max_points = 9999
-    labels[:, 0] /= max_time
-    labels[:, 1] /= max_points
-    return labels
+            # 验证阶段
+            model.eval()
+            test_loss = 0
+            with torch.no_grad():
+                for test_batch in test_loader:
+                    test_inputs, test_targets = test_batch['inputs'].cuda(), test_batch['labels'].cuda()
+                    test_outputs = model(test_inputs)
+                    test_loss += loss_fn(test_outputs, test_targets).item()
 
-# 反归一化，用于模型评估时恢复原始单位
-def denormalize_labels(labels):
-    max_time = 5000
-    max_points = 1000
-    labels[:, 0] *= max_time
-    labels[:, 1] *= max_points
-    return labels
+            avg_test_loss = test_loss / len(test_loader)
 
-# 训练轮数
-for i in range(10000):
-    train_dataloader = DataLoader(train_dataset, batch_size=2, shuffle=True)
-    train_loss = 0
-    for batch in train_dataloader:
-        inputs = batch['inputs'].cuda()
-        tar = batch['labels'].cuda()
+            # 记录损失到 TensorBoard
+            writer.add_scalars("损失曲线", {
+                '训练': train_loss,
+                '测试': avg_test_loss,
+            }, step)
 
-        # 归一化标签
-        tar = normalize_labels(tar)
+            # 每次调整后保存模型
+            torch.save(model.state_dict(), f'./simpleModel/model_step_{step}.pth')
+            print(f'保存模型到 model_step_{step}.pth')
 
-        # 进行前向传播
-        opt = n(inputs)
-        loss = loss_fn(opt, tar)
-        train_loss += loss.item()
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
+            # 保存最好的模型
+            if avg_test_loss < best_loss:
+                best_loss = avg_test_loss
+                torch.save(model.state_dict(), './simpleModel/best_model.pth')
+                print(f"保存最佳模型到 best_model.pth，测试损失: {best_loss}")
 
-    # 更新学习率调度器
-    avg_train_loss = train_loss / len(train_dataloader)
-    scheduler.step(avg_train_loss)
+            step += 1  # 更新步数
 
-    # 每100轮输出训练和测试结果
-    if i % 100 == 0:
-        print(f"第{i}轮训练损失: {avg_train_loss}")
-        writer.add_scalar(f"训练损失{t}", avg_train_loss, i)
+        # 更新学习率调度器
+        scheduler.step(avg_test_loss)
 
-        test_loss = 0
-        with torch.no_grad():
-            for test_batch in test_dataloader:
-                test_inputs = test_batch['inputs'].cuda()
-                test_tar = test_batch['labels'].cuda()
+    writer.close()
 
-                # 归一化标签
-                test_tar = normalize_labels(test_tar)
-
-                test_opt = n(test_inputs)
-                test_loss += loss_fn(test_opt, test_tar).item()
-
-        avg_test_loss = test_loss / len(test_dataloader)
-        print(f"第{i}轮测试损失: {avg_test_loss}")
-        writer.add_scalar(f"测试损失{t}", avg_test_loss, i)
-        torch.save(n.state_dict(), f'./simpleModel/model_epoch_{i}.pth')
-        print(f'保存模型到 model_epoch_{i}.pth')
-
-# 关闭 SummaryWriter
-writer.close()
+# 实例化模型并训练
+model = nerveW()
+train_model(model, train_dataloader, test_dataloader, num_epochs=5, lr=0.001)
