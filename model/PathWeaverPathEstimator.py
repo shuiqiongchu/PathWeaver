@@ -38,9 +38,9 @@ class DataSource(Dataset):
         return {'inputs': inputs, 'labels': labels}  # 返回字典形式
 
 # 神经网络模型
-class nerveW(nn.Module):
+class PathEstimator(nn.Module):
     def __init__(self):
-        super(nerveW, self).__init__()
+        super(PathEstimator, self).__init__()
         self.model = nn.Sequential(
             nn.Linear(6, 64),  # 输入 6 个特征
             nn.ReLU(),
@@ -55,10 +55,16 @@ class nerveW(nn.Module):
         return self.model(input)
 
 # 自定义损失函数
-def custom_loss(output, target, weight_time=1.0, weight_count=1.0):
-    time_loss = nn.MSELoss()(output[:, 0], target[:, 0])  # 总时间的损失
-    count_loss = nn.MSELoss()(output[:, 1], target[:, 1])  # 路径点数量的损失
+def custom_loss(output, target, weight_time=1, weight_count=1.0):
+    # time_loss: 总时间的损失，默认权重较小
+    time_loss = nn.MSELoss()(output[:, 0], target[:, 0])
+
+    # count_loss: 路径点数量的损失，默认权重较大
+    count_loss = nn.MSELoss()(output[:, 1], target[:, 1])
+
+    # 总损失
     return weight_time * time_loss + weight_count * count_loss
+
 
 # 数据加载
 train_data = load_data('../dataAcquisition/mouse_events.txt')
@@ -79,8 +85,8 @@ test_dataset = DataSource(test_tensor)
 print(len(train_dataset))
 print(len(test_dataset))
 
-train_dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True)
-test_dataloader = DataLoader(test_dataset, batch_size=16, shuffle=False)
+train_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+test_dataloader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
 # 训练和验证循环
 def train_model(model, train_loader, test_loader, num_epochs=3, lr=0.001):
@@ -124,13 +130,13 @@ def train_model(model, train_loader, test_loader, num_epochs=3, lr=0.001):
             }, step)
 
             # 每次调整后保存模型
-            torch.save(model.state_dict(), f'./simpleModel/model_step_{step}.pth')
+            #torch.save(model.state_dict(), f'./saveModel/model_step_{step}.pth')
             print(f'保存模型到 model_step_{step}.pth')
 
             # 保存最好的模型
             if avg_test_loss < best_loss:
                 best_loss = avg_test_loss
-                torch.save(model.state_dict(), './simpleModel/best_model.pth')
+                torch.save(model.state_dict(), 'saveModel/best_model.pth')
                 print(f"保存最佳模型到 best_model.pth，测试损失: {best_loss}")
 
             step += 1  # 更新步数
@@ -141,5 +147,5 @@ def train_model(model, train_loader, test_loader, num_epochs=3, lr=0.001):
     writer.close()
 
 # 实例化模型并训练
-model = nerveW()
-train_model(model, train_dataloader, test_dataloader, num_epochs=5, lr=0.001)
+model = PathEstimator()
+train_model(model, train_dataloader, test_dataloader, num_epochs=100, lr=0.001)
